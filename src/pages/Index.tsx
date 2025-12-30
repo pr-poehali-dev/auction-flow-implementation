@@ -18,6 +18,12 @@ interface AuctionItem {
   retail: number;
   minPrice: number;
   startTime: Date;
+  botThreshold: number;
+  purchasePrice: number;
+  earlyParticipants: number[];
+  buyItNowDeadline: Date | null;
+  winnerId: number | null;
+  botBidsCount: number;
 }
 
 const categories = [
@@ -42,37 +48,55 @@ const mockAuctions: AuctionItem[] = [
     id: 1,
     title: 'Apple AirPods Pro 2-го поколения',
     image: 'https://cdn.poehali.dev/projects/45407f2b-b3a8-410c-bb1b-6b389a904c86/files/28d1a6c2-804f-4fa9-ac16-bb22448e11b3.jpg',
-    currentPrice: 2500,
-    totalBids: 48,
-    timeLeft: 8,
+    currentPrice: 0,
+    totalBids: 0,
+    timeLeft: 10,
     category: 'Электроника',
     retail: 129900,
     minPrice: 1000,
-    startTime: new Date()
+    startTime: new Date(),
+    botThreshold: 50000,
+    purchasePrice: 85000,
+    earlyParticipants: [],
+    buyItNowDeadline: null,
+    winnerId: null,
+    botBidsCount: 0
   },
   {
     id: 2,
     title: 'Смарт-часы Samsung Galaxy Watch 6',
     image: 'https://cdn.poehali.dev/projects/45407f2b-b3a8-410c-bb1b-6b389a904c86/files/c71ccf7a-a341-45f4-bba8-c309da382321.jpg',
-    currentPrice: 4200,
-    totalBids: 82,
-    timeLeft: 5,
+    currentPrice: 0,
+    totalBids: 0,
+    timeLeft: 10,
     category: 'Часы',
     retail: 179900,
     minPrice: 1000,
-    startTime: new Date()
+    startTime: new Date(),
+    botThreshold: 70000,
+    purchasePrice: 120000,
+    earlyParticipants: [],
+    buyItNowDeadline: null,
+    winnerId: null,
+    botBidsCount: 0
   },
   {
     id: 3,
     title: 'Ноутбук ASUS TUF Gaming F15',
     image: 'https://cdn.poehali.dev/projects/45407f2b-b3a8-410c-bb1b-6b389a904c86/files/612e29a9-eadd-49f0-b57d-8ed6856fbb7a.jpg',
-    currentPrice: 6750,
-    totalBids: 134,
-    timeLeft: 3,
+    currentPrice: 0,
+    totalBids: 0,
+    timeLeft: 10,
     category: 'Компьютеры',
     retail: 399900,
     minPrice: 1000,
-    startTime: new Date()
+    startTime: new Date(),
+    botThreshold: 150000,
+    purchasePrice: 280000,
+    earlyParticipants: [],
+    buyItNowDeadline: null,
+    winnerId: null,
+    botBidsCount: 0
   }
 ];
 
@@ -82,6 +106,7 @@ const Index = () => {
   const [totalDeposit, setTotalDeposit] = useState(5000);
   const [auctions, setAuctions] = useState(mockAuctions);
   const [userBids, setUserBids] = useState<{ [key: number]: number }>({});
+  const [userId] = useState(Math.floor(Math.random() * 100000));
 
   const currentLevel = loyaltyLevels
     .slice()
@@ -92,14 +117,34 @@ const Index = () => {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setAuctions(prev => prev.map(auction => ({
-        ...auction,
-        timeLeft: auction.timeLeft > 0 ? auction.timeLeft - 1 : 10
-      })));
+      setAuctions(prev => prev.map(auction => {
+        if (auction.timeLeft > 0) {
+          return { ...auction, timeLeft: auction.timeLeft - 1 };
+        } else {
+          if (auction.currentPrice < auction.botThreshold && !auction.winnerId) {
+            return {
+              ...auction,
+              currentPrice: auction.currentPrice + 50,
+              totalBids: auction.totalBids + 1,
+              timeLeft: 10,
+              botBidsCount: auction.botBidsCount + 1
+            };
+          } else if (!auction.winnerId) {
+            const deadline = new Date();
+            deadline.setHours(deadline.getHours() + 24);
+            return {
+              ...auction,
+              winnerId: userId,
+              buyItNowDeadline: deadline
+            };
+          }
+        }
+        return auction;
+      }));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [userId]);
 
   const formatTime = (seconds: number) => {
     return `00:${seconds.toString().padStart(2, '0')}`;
@@ -109,22 +154,32 @@ const Index = () => {
     if (balance < 50) return;
     
     const auction = auctions.find(a => a.id === auctionId);
-    if (!auction) return;
+    if (!auction || auction.winnerId) return;
 
     if (auction.currentPrice >= auction.minPrice) {
-      const hasEarlyBid = userBids[auctionId] && auction.currentPrice < auction.minPrice;
-      if (!hasEarlyBid && Object.keys(userBids).length === 0) {
+      if (!auction.earlyParticipants.includes(userId)) {
         return;
       }
     }
     
     setBalance(prev => prev - 50);
     setUserBids(prev => ({ ...prev, [auctionId]: (prev[auctionId] || 0) + 50 }));
-    setAuctions(prev => prev.map(auc => 
-      auc.id === auctionId 
-        ? { ...auc, currentPrice: auc.currentPrice + 50, totalBids: auc.totalBids + 1, timeLeft: 10 }
-        : auc
-    ));
+    setAuctions(prev => prev.map(auc => {
+      if (auc.id === auctionId) {
+        const updatedParticipants = auc.currentPrice < auc.minPrice && !auc.earlyParticipants.includes(userId)
+          ? [...auc.earlyParticipants, userId]
+          : auc.earlyParticipants;
+        
+        return {
+          ...auc,
+          currentPrice: auc.currentPrice + 50,
+          totalBids: auc.totalBids + 1,
+          timeLeft: 10,
+          earlyParticipants: updatedParticipants
+        };
+      }
+      return auc;
+    }));
   };
 
   const topUpWallet = (amount: number) => {
@@ -440,7 +495,9 @@ const Index = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredAuctions.map((auction) => {
             const discount = calculateDiscount(auction.currentPrice, auction.retail);
-            const isLocked = auction.currentPrice >= auction.minPrice && !userBids[auction.id];
+            const isLocked = auction.currentPrice >= auction.minPrice && !auction.earlyParticipants.includes(userId);
+            const isFinished = auction.winnerId !== null;
+            const isWinner = auction.winnerId === userId;
             
             return (
               <Card key={auction.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 animate-scale-in group border-2 hover:border-primary/30">
@@ -458,7 +515,26 @@ const Index = () => {
                       -{discount}%
                     </Badge>
                   </div>
-                  {isLocked && (
+                  {isFinished && (
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center">
+                      <div className="text-center text-white p-4">
+                        {isWinner ? (
+                          <>
+                            <Icon name="Trophy" size={48} className="mx-auto mb-3 text-yellow-400" />
+                            <p className="text-lg font-bold">Вы выиграли!</p>
+                            <p className="text-xs opacity-90 mt-1">У вас 24 часа на выкуп</p>
+                          </>
+                        ) : (
+                          <>
+                            <Icon name="XCircle" size={48} className="mx-auto mb-3" />
+                            <p className="text-lg font-bold">Аукцион завершен</p>
+                            <p className="text-xs opacity-90 mt-1">Средства возвращены на баланс</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {!isFinished && isLocked && (
                     <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center">
                       <div className="text-center text-white p-4">
                         <Icon name="Lock" size={32} className="mx-auto mb-2" />
@@ -506,21 +582,38 @@ const Index = () => {
                       </div>
                       <Button 
                         onClick={() => placeBid(auction.id)}
-                        disabled={balance < 50 || isLocked}
+                        disabled={balance < 50 || isLocked || isFinished}
                         className="gap-2 bg-primary hover:bg-primary/90 shadow-md"
                         size="lg"
                       >
                         <Icon name="Gavel" size={18} />
-                        {isLocked ? 'Закрыто' : '50 ₸'}
+                        {isFinished ? 'Завершен' : isLocked ? 'Закрыто' : '50 ₸'}
                       </Button>
                     </div>
 
-                    {userBids[auction.id] && (
+                    {userBids[auction.id] && !isFinished && (
                       <div className="text-center p-2 rounded-lg bg-primary/5 border border-primary/20">
                         <p className="text-xs text-primary font-medium">
                           Вы в игре! Потрачено: {userBids[auction.id]} ₸
                         </p>
                       </div>
+                    )}
+                    
+                    {auction.botBidsCount > 0 && (
+                      <div className="flex items-center justify-between text-xs text-muted-foreground p-2 bg-muted/50 rounded-lg">
+                        <div className="flex items-center gap-1">
+                          <Icon name="Bot" size={12} />
+                          <span>Защита от низкой цены</span>
+                        </div>
+                        <span>{auction.botBidsCount} ставок</span>
+                      </div>
+                    )}
+                    
+                    {isFinished && isWinner && auction.buyItNowDeadline && (
+                      <Button className="w-full bg-accent hover:bg-accent/90 gap-2" size="lg">
+                        <Icon name="ShoppingCart" size={18} />
+                        Выкупить за {auction.currentPrice.toLocaleString()} ₸
+                      </Button>
                     )}
                   </div>
                 </CardContent>
