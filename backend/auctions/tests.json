@@ -1,0 +1,14 @@
+{
+  "tests": [
+    {
+      "name": "Get active auctions list",
+      "method": "GET",
+      "path": "/?action=list",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "auctions": "array"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
